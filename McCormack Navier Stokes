@@ -1,0 +1,173 @@
+## Navier Stokes, fully compressible, using McCormack scheme
+## A rectangular box with moving lid in 2D
+## NB! not finished V. Popsueva
+
+from mpl_toolkits.mplot3d import Axes3D    ##New Library required for projected 3d plots
+
+#import sys
+#sys.modules[__name__].__dict__.clear()
+import numpy
+from matplotlib import pyplot, cm
+%matplotlib inline
+
+###variable declarations
+nx = 5
+ny = 5
+nt = 10
+D = 1.0
+U = 1.0
+c = 10.0
+dx = D / (nx - 1)
+dy = D / (ny - 1)
+sigma = .2
+dt = sigma * dx
+mu = 0.01
+rh0 = 1
+M = U/c
+Re = rh0*U*D/mu
+
+a1 = dt/dx
+a2 = dt/dy
+a3 = dt/(dx*M**2)
+a4 = dt/(dy*M**2)
+a5 = 4.*dt/(3.*Re*dx**2)
+a6 = dt/(Re*dy**2)
+a7 = dt/(Re*dx**2)
+a8 = 4.*dt/(3.*Re*dy**2)
+a9 = dt/(12.*Re*dx*dy)
+a10 = 2.*(a5 + a6)
+a11 = 2.*(a7 + a8)
+
+x = numpy.linspace(0, D, nx)
+y = numpy.linspace(0, D, ny)
+
+rhoup = numpy.ones((ny, nx)) ##create a 1xn vector of 1's
+rhouc = numpy.ones((ny, nx))
+rhoun = numpy.ones((ny, nx))
+un = numpy.ones((ny, nx))
+up = numpy.ones((ny, nx))
+
+rhovp = numpy.ones((ny, nx))
+rhovc = numpy.ones((ny, nx))
+rhovn = numpy.ones((ny, nx))
+vn = numpy.ones((ny, nx))
+vp = numpy.ones((ny, nx))
+
+rhop = numpy.ones((ny, nx))
+rhoc = numpy.ones((ny, nx)) ##
+rhon = numpy.ones((ny, nx)) ##
+
+###Assign initial conditions
+
+###Plot Initial Condition
+##the figsize parameter can be used to produce different sized images
+fig = pyplot.figure(figsize=(11, 7), dpi=100)
+ax = fig.gca(projection='3d')                      
+X, Y = numpy.meshgrid(x, y)                            
+surf = ax.plot_surface(X, Y, rhovp[:], cmap=cm.viridis)
+print(rhoup)
+
+for n in range(0, nt-1): ##loop across number of time steps
+    rhoun = rhouc.copy()
+    rhovn = rhovc.copy()
+    rhon = rhoc.copy()
+    row, col = up.shape
+    
+    #print(u.shape)
+
+    for k in range(0, row-1):
+        for l in range(0, col-1):
+            un[k,l] = rhoun[k,l]/rhon[k,l]
+            vn[k,l] = rhovn[k,l]/rhon[k,l]
+        
+    for j in range(1, row-1):
+        for i in range(1, col-1):
+            # predictor step
+            rhoup[j, i] = rhoun[j,i] - (a3*(rhon[j+1,i]-rhon[j,i])) - (a1*(rhon[j+1,i]*un[j+1,i]**2-rhon[j,i]*un[j,i]**2)) -\
+                                  (a2*(rhon[j,i+1]*un[j,i+1]*vn[j,i+1] - rhon[j,i]*un[j,i]*vn[j,i]))  - a10* un[j,i] +\
+                                  (a5*(un[j+1,i] + un[j-1,i])) + a6 * (un[j,i+1] + un[j,i-1]) +\
+                                  (a9*(vn[j+1,i+1]+vn[j-1,i-1]-vn[j+1,i-1]-vn[j-1,i+1]))
+            
+            rhovp[j, i] =  rhovn[j,i] - a4*(rhon[j,i+1]-rhon[j,i])-(a1*(rhon[j+1,i]*un[j+1,i]*vn[j+1,i]-rhon[j,i]*un[j,i]*vn[j,i])) - \
+                                  (a2*(rhon[j,i+1]*vn[j,i+1]**2 - rhon[j,i]*vn[j,i]**2)) - a11*vn[j,i] + \
+                                  (a7*(vn[j+1,i] + vn[j-1,i])) + a8*(vn[j,i+1] + vn[j,i-1]) +\
+                                  (a9*(un[j+1,i+1] + un[j-1,i-1] - un[j+1,i-1] - un[j-1,i+1]))
+            
+            rhop[j, i] = (rhon[j, i] - (a1 * (rhoun[j+1,i] - rhoun[j,i])) -
+                                  (a2*(rhovn[j, i+1] - rhovn[j, i])))
+            
+    rhoup[-1, :] = 0
+    rhoup[:, 0] = 0
+    rhoup[:, -1] = 0
+    rhoup[0, :] = U
+            
+    rhovp[0, :] = 0
+    rhovp[-1, :] = 0
+    rhovp[:, 0] = 0
+    rhovp[:, -1] = 0
+ 
+    print(rhoup)
+
+    # boundary conditions x = 0, left wall, i = 0 
+    for j in range(0, row-2):
+        rhop[j,0] = rhon[j,0] - dt/(2*dx)*(-rhoun[j+2,0]+4.*rhoun[j+1,0]-3.*rhoun[j,0])
+        rhoc[j,0] = 0.5*(rhon[j,0] + rhop[j,0] - dt/(2*dx)*(-rhouc[j+2,0]+4.*rhouc[j+1,0]-3.*rhouc[j,0]) )
+            
+    # boundary conditions x = D, right wall, i = nx -1
+    for j in range(0, row-1):
+        rhop[j,nx-1] = rhon[j,nx-1] + dt/(2*dx)*(-rhoun[j-2,nx-1]+4.*rhoun[j-1,nx-1]-3.*rhoun[j,nx-1])
+        rhoc[j,nx-1] = 0.5*(rhon[j,nx-1] + rhop[j,nx-1] + dt/(2*dx)*(-rhouc[j-2,nx-1]+4.*rhouc[j-1,nx-1]-3.*rhouc[j,nx-1]))
+            
+    # boundary conditions y = 0, bottom/front wall, j = 0
+    for i in range(0, col-2):
+        rhop[0,i] = rhon[0,i] - dt/(2*dy)*(-rhovn[0,i+2]+4.*rhovn[0,i+1]-3.*rhovn[0,i])
+        rhoc[0,i] = 0.5*(rhon[0,i] + rhop[0,i] - dt/(2*dy)*(-rhovc[0,i+2]+4.*rhovc[0,i+1]-3.*rhovc[0,i]) )
+        
+    # boundary condition y = D, j=ny-1, upper/back wall where u = U
+    for i in range(0, col-1):
+        rhop[ny-1,i] = rhon[ny-1,i] - dt*U/(2*dx)*(rhon[ny-1,i+1]-rhon[ny-1,i-1]) +\
+                                    dt/(2*dy)*(-rhovn[ny-1,i-2]+4.*rhovn[ny-1,i-1]-3.*rhovn[ny-1,i])
+        rhoc[ny-1,i] = 0.5*(rhon[ny-1,i] + rhop[ny-1,i] - dt*U/(2*dx)*(rhop[ny-1,i+1]-rhop[ny-1,i-1]) + dt/(2*dy)*(-rhovp[ny-1,i-2]+4.*rhovp[ny-1,i-1]-3.*rhovp[ny-1,i]))
+            
+    # update velocity for all nodes        
+    for k in range(0, row-1):
+        for l in range(0, col-1):
+            up[k,l] = rhoup[k,l]/rhop[k,l]
+            vp[k,l] = rhovp[k,l]/rhop[k,l]
+    
+    # all nodes
+    for j in range(1, row-1):
+        for i in range(1, col-1):        
+            
+            # corrector step
+            
+            rhoc[j, i] = 0.5*(rhon[j, i] + rhop[j,i] - a1 + (rhoup[j,i] - rhoup[j-1,i]) - \
+                                  a2*(rhovp[j,i] - rhovp[j,i-1]))
+            
+            rhouc[j, i] = 0.5*(rhoun[j,i] +rhoup[j,i]- (a3*(rhop[j,i]-rhop[j-1,i])) - (a1*(rhop[j,i]*up[j,i]**2-rhop[j-1,i]*up[j-1,i]**2)) -\
+                                  (a2*(rhop[j,i]*up[j,i]*vp[j,i] - rhop[j,i-1]*up[j,i-1]*vp[j,i-1])) - a10*up[j,i] +\
+                                  (a5*(up[j+1,i] + up[j-1,i])) + a6 * (up[j,i+1] + up[j,i-1]) +\
+                                  (a9*(vp[j+1,i+1]+vp[j-1,i-1]-vp[j+1,i-1]-vp[j-1,i+1])))
+            
+            rhovc[j, i] = 0.5*(rhovn[j,i] +rhovp[j,i] - a4*(rhop[j,i]-rhop[j,i-1])-(a1*(rhop[j,i]*up[j,i]*vp[j,i]-rhop[j-1,i]*up[j-1,i]*vp[j-1,i])) - \
+                                  (a2*(rhop[j,i]*vp[j,i]**2 - rhop[j,i-1]*vp[j,i-1]**2)) - a11*vp[j,i] + \
+                                  (a7*(vp[j+1,i] + vp[j-1,i])) + a8*(vp[j,i+1] + vp[j,i-1]) +\
+                                  (a9*(up[j+1,i+1] + up[j-1,i-1] - up[j+1,i-1] - up[j-1,i+1]))) 
+            
+            rhovc[0, :] = 1
+            rhovc[-1, :] = 1
+            rhovc[:, 0] = 1
+            rhovc[:, -1] = 1
+            rhouc[0, :] = 1
+            rhouc[-1, :] = 1
+            rhouc[:, 0] = 1
+            rhouc[:, -1] = 1
+            rhoc[0, :] = 1
+            rhoc[-1, :] = 1
+            rhoc[:, 0] = 1
+            rhoc[:, -1] = 1
+            
+
+fig = pyplot.figure(figsize=(11, 7), dpi=100)
+ax = fig.gca(projection='3d')
+surf2 = ax.plot_surface(X, Y, rhoc[:], cmap=cm.viridis)
